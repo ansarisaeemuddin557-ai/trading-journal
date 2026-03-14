@@ -1,0 +1,180 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Cloud Trading Journal</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{font-family:Arial;background:#0c0f2a;color:white;margin:0;padding:20px}
+h1{margin-bottom:10px}
+button{padding:10px 15px;margin:5px;border:none;border-radius:6px;background:#6c6cff;color:white;cursor:pointer}
+input,select{padding:8px;margin:4px;border-radius:5px;border:none}
+table{width:100%;margin-top:15px;border-collapse:collapse}
+th,td{padding:10px;border-bottom:1px solid #333;text-align:left}
+.card{background:#15193f;padding:15px;border-radius:10px;margin-bottom:20px}
+</style>
+</head>
+
+<body>
+
+<h1>Trading Journal (Cloud)</h1>
+
+<div class="card">
+<h3>Add Trade</h3>
+<input id="symbol" placeholder="Symbol">
+<select id="side">
+<option>Long</option>
+<option>Short</option>
+</select>
+<input id="net" type="number" placeholder="Net R">
+<input id="notes" placeholder="Notes">
+<input type="file" id="shot">
+<button onclick="addTrade()">Save Trade</button>
+</div>
+
+<div class="card">
+<h3>Trade Log</h3>
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Symbol</th>
+<th>Side</th>
+<th>Net R</th>
+<th>Notes</th>
+<th>Screenshot</th>
+</tr>
+</thead>
+<tbody id="log"></tbody>
+</table>
+</div>
+
+<div class="card">
+<h3>Equity Curve</h3>
+<canvas id="equityChart"></canvas>
+</div>
+
+<script>
+
+const firebaseConfig = {
+apiKey: "YOUR_API_KEY",
+authDomain: "YOUR_PROJECT.firebaseapp.com",
+projectId: "YOUR_PROJECT",
+storageBucket: "YOUR_PROJECT.appspot.com",
+messagingSenderId: "123456",
+appId: "APPID"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.firestore();
+const storage = firebase.storage();
+
+let trades=[];
+
+async function addTrade(){
+
+const symbol=document.getElementById("symbol").value;
+const side=document.getElementById("side").value;
+const net=parseFloat(document.getElementById("net").value);
+const notes=document.getElementById("notes").value;
+const file=document.getElementById("shot").files[0];
+
+let imageURL="";
+
+if(file){
+
+const ref=storage.ref().child("tradeShots/"+Date.now()+file.name);
+await ref.put(file);
+imageURL=await ref.getDownloadURL();
+
+}
+
+const trade={
+date:new Date().toISOString(),
+symbol,
+side,
+net,
+notes,
+imageURL
+};
+
+await db.collection("trades").add(trade);
+
+loadTrades();
+
+}
+
+async function loadTrades(){
+
+const snap=await db.collection("trades").orderBy("date","desc").get();
+
+trades=[];
+snap.forEach(doc=>trades.push(doc.data()));
+
+renderTrades();
+renderChart();
+
+}
+
+function renderTrades(){
+
+const body=document.getElementById("log");
+body.innerHTML="";
+
+trades.forEach(t=>{
+
+const row=document.createElement("tr");
+
+row.innerHTML=`
+<td>${new Date(t.date).toLocaleDateString()}</td>
+<td>${t.symbol}</td>
+<td>${t.side}</td>
+<td>${t.net}</td>
+<td>${t.notes}</td>
+<td>${t.imageURL ? "<a href='"+t.imageURL+"' target='_blank'>view</a>" : ""}</td>
+`;
+
+body.appendChild(row);
+
+});
+
+}
+
+function renderChart(){
+
+let equity=0;
+let data=[];
+
+trades.slice().reverse().forEach(t=>{
+equity+=t.net;
+data.push(equity);
+});
+
+const ctx=document.getElementById("equityChart");
+
+if(window.chart) window.chart.destroy();
+
+window.chart=new Chart(ctx,{
+type:"line",
+data:{
+labels:data.map((_,i)=>i+1),
+datasets:[{label:"Equity",data:data}]
+},
+options:{responsive:true}
+});
+
+}
+
+loadTrades();
+
+</script>
+
+</body>
+</html>
